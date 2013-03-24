@@ -34,15 +34,15 @@ $MYSQLPASS="password"
 
 $MYSQLDB="database"
 
-# Backup Directory without / @end
+ # Backup Directory without / @end
 
 $BACKUPDIR="/home/user" 
 
-# Log Dir without / @end
+ # Log Dir without / @end
 
 $LOGDIR="/var/log"
 
-# Verschluesselung
+ # Verschluesselung
 
 $KEYFILE="/home/user/keyfile.key"
 
