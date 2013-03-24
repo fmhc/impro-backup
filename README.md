@@ -1,8 +1,11 @@
 impro-backup - backup script
+==
 copyright 2013 by Finn Malte Hinrichsen, fmh@fmhc.de
+
 Alle Reche vorbehalten bis ich mich fuer eine OpenSource-Lizenz entschieden habe.
 
 Was macht impro-Backup?
+==
 
 - Sichert Verzeichnisse rekursiv
 	- /var/www (Webserverdateien)
@@ -12,6 +15,7 @@ Was macht impro-Backup?
 - verschlüsselt das Archiv mit einem vorher angegebenen Key
 
 Installation
+==
 
 (unter Ubuntu, andere Systeme aehnlich)
 Falls git noch nicht installiert ist:
