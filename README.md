@@ -25,16 +25,27 @@ Anschliessend das Repository lokal klonen
  git clone https://github.com/fmhc/impro-backup.git
 
 Datei backup.cfg.example nach backup.cfg kopieren und Inhalte anpassen:
+
  # mySQL-Settings
- $MYSQLUSER="root"
- $MYSQLPASS="password"
- $MYSQLDB="database"
- # Backup Directory without / @end
- $BACKUPDIR="/home/user" 
- # Log Dir without / @end
- $LOGDIR="/var/log"
- # Verschluesselung
- $KEYFILE="/home/user/keyfile.key"
+
+$MYSQLUSER="root"
+
+$MYSQLPASS="password"
+
+$MYSQLDB="database"
+
+# Backup Directory without / @end
+
+$BACKUPDIR="/home/user" 
+
+# Log Dir without / @end
+
+$LOGDIR="/var/log"
+
+# Verschluesselung
+
+$KEYFILE="/home/user/keyfile.key"
+
 
 Datei backup.key.example nach backup.key kopieren und Passwort rein schreiben.
 
