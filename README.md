@@ -9,7 +9,7 @@ Was macht impro-Backup?
 	- /etc/apache2 (Webserverkonfiguration)
 - Macht einen mysqldump einer/aller MySQL-Datenbank(en)
 - packt alles in ein gzip-Archiv
-- verscuesselt das Archiv mit einem vorher angegebeneKey
+- verschlüsselt das Archiv mit einem vorher angegebenen Key
 
 Installation
 
