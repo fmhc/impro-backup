@@ -1,21 +1,26 @@
 #! /bin/sh
+# ########################################
+# 
+# impro-backup by fmh 2013
+#
+# ########################################
+# Versions
+# 0.1 first version
+# 0.2 include and encryption
+# 0.3 better variables handling
+version="0.3"
 
-#Versionen
-# 0.1 erste Version
-# 0.2 include und verschluesselung
-version="0.2"
-
+# ########################################
+# Change path to config
 . ../scripts-config/backup.cfg
 
-
-# Backup-Verzeichnis mit / am Ende ( z.b. /temp/ )
-backupdir="/home/fmh/backup/"
-
+# ########################################
+# nothing to do for you any more
+# ########################################
 datum=$(date +%y%m%d-%H%M)
-
 # Backupdir mit Datum anreichern
-bdir=$backupdir
-log="/var/log/backup_"$datum".log"
+bdir=$BACKUPDIR
+log=$LOGDIR"/backup_"$datum".log"
 
 #cd $backupdir
 mkdir -p $bdir
@@ -53,7 +58,7 @@ echo $(date +"%y-%m-%d %H:%M")  $bdir/backup_sql_$datum.sql.gz" deleted"
 # Verschluesselung
 echo $(date +"%y-%m-%d %H:%M") " verschluesseln... "
 echo $(date +"%y-%m-%d %H:%M") " verschluesseln " >> $log
-ccencrypt $bdir/backup_$datum.zip -k ../scripts-config/runpat.key
+ccencrypt $bdir/backup_$datum.zip -k $KEYFILE
 echo $(date +"%y-%m-%d %H:%M") " Backup beendet "
 echo $line
 echo $(date +"%y-%m-%d %H:%M") " Backup beendet " >> $log
