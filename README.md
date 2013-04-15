@@ -1,19 +1,20 @@
 impro-backup - backup script
-<<<<<<< HEAD
-
-=======
 ==
->>>>>>> 48673586e32fb0c4d5234b95b83a7fbf534c1778
-copyright 2013 by Finn Malte Hinrichsen, fmh@fmhc.de
 
-Alle Reche vorbehalten bis ich mich fuer eine OpenSource-Lizenz entschieden habe.
+License
+==
+copyright (c) 2013 by Finn Malte Hinrichsen, fmh@fmhc.de
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE
+
 
 Was macht impro-Backup?
 ==
-<<<<<<< HEAD
-=======
 
->>>>>>> 48673586e32fb0c4d5234b95b83a7fbf534c1778
 - Sichert Verzeichnisse rekursiv
 	- /var/www (Webserverdateien)
 	- /etc/apache2 (Webserverkonfiguration)
@@ -27,34 +28,14 @@ Installation
 (unter Ubuntu, andere Systeme aehnlich)
 Falls git noch nicht installiert ist:
  apt-get install git -y
+ 
+ncftp wird benötigt
+ apt-get install ncftp
 
 Anschliessend das Repository lokal klonen
  git clone https://github.com/fmhc/impro-backup.git
 
-Datei backup.cfg.example nach backup.cfg kopieren und Inhalte anpassen:
-
- # mySQL-Settings
-
-$MYSQLUSER="root"
-
-$MYSQLPASS="password"
-
-$MYSQLDB="database"
-
- # Backup Directory without / @end
-
-$BACKUPDIR="/home/user" 
-
- # Log Dir without / @end
-
-$LOGDIR="/var/log"
-
- # Verschluesselung
-
-$KEYFILE="/home/user/keyfile.key"
-
-
 Datei backup.key.example nach backup.key kopieren und Passwort rein schreiben.
 
-In der Datei backup.sh muss evtl. noch der Pfad zur Konfigurationsdatei angepasst werden.
+In der Datei backup.sh muss noch der Pfad zur Konfigurationsdatei angepasst werden.
 
