@@ -1,12 +1,19 @@
 impro-backup - backup script
+<<<<<<< HEAD
+
+=======
 ==
+>>>>>>> 48673586e32fb0c4d5234b95b83a7fbf534c1778
 copyright 2013 by Finn Malte Hinrichsen, fmh@fmhc.de
 
 Alle Reche vorbehalten bis ich mich fuer eine OpenSource-Lizenz entschieden habe.
 
 Was macht impro-Backup?
 ==
+<<<<<<< HEAD
+=======
 
+>>>>>>> 48673586e32fb0c4d5234b95b83a7fbf534c1778
 - Sichert Verzeichnisse rekursiv
 	- /var/www (Webserverdateien)
 	- /etc/apache2 (Webserverkonfiguration)

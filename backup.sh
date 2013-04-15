@@ -1,4 +1,4 @@
-#! /bin/sh
+#!/bin/bash
 # ########################################
 # 
 # impro-backup by fmh 2013
@@ -8,22 +8,26 @@
 # 0.1 first version
 # 0.2 include and encryption
 # 0.3 better variables handling
-version="0.3"
+# 0.4 bugfixes, FTP Upload
+version="0.4"
 
 # ########################################
-# Change path to config
-. ../scripts-config/backup.cfg
+# (!) Change path to config
+source /home/fmh/scripts-config/backup-config.sh
+# TODO: check einbauen ob alle benoetigten variablen geladen sind
+
 
 # ########################################
 # nothing to do for you any more
 # ########################################
 datum=$(date +%y%m%d-%H%M)
 # Backupdir mit Datum anreichern
-bdir=$BACKUPDIR
-log=$LOGDIR"/backup_"$datum".log"
+bdir=$BACKUP_TO
+log=$LOG_TO"/backup_"$datum".log"
 
 #cd $backupdir
-mkdir -p $bdir
+# TODO: if not exist Backupdir abfragen
+#mkdir -p $bdir
 line="-------------------------------------------------------------------------"
 
 echo $line
@@ -40,13 +44,16 @@ echo $line
 echo $(date +"%y-%m-%d %H:%M") " Backup gestartet in Verzeichnis: "$bdir 
 echo $(date +"%y-%m-%d %H:%M") " Backup gestartet in Verzeichnis: "$bdir >> $log
 
-echo $(date +"%y-%m-%d %H:%M") " Backup von /etc/apache2/* " 
-echo $(date +"%y-%m-%d %H:%M") " Backup von /etc/apache2/* " >> $log
-zip -grv $bdir/backup_$datum.zip /etc/apache2/* >> $log 
 
-echo $(date +"%y-%m-%d %H:%M") " Backup von /var/www/* "
-echo $(date +"%y-%m-%d %H:%M") " Backup von /var/www/* " >> $log
-zip -grv $bdir/backup_$datum.zip /var/www/* >> $log
+echo $BACKUP_DIR
+filecontent=$(<$BACKUP_DIR)
+
+for t in "${filecontent[@]}"
+do
+echo $(date +"%y-%m-%d %H:%M") " Backup von "$t"/* /n" 
+echo $(date +"%y-%m-%d %H:%M") " Backup von "$t"/* " >> $log
+zip -grv $bdir/backup_$datum.zip $t/* >> $log 
+done
 
 echo $(date +"%y-%m-%d %H:%M") " mysql-dump "
 echo $(date +"%y-%m-%d %H:%M") " mysql-dump " >> $log
@@ -62,4 +69,9 @@ ccencrypt $bdir/backup_$datum.zip -k $KEYFILE
 echo $(date +"%y-%m-%d %H:%M") " Backup beendet "
 echo $line
 echo $(date +"%y-%m-%d %H:%M") " Backup beendet " >> $log
+
+ncftpput -m -u $FTPU -p $FTPP $FTPS  $FTPF $bdir/backup_$datum.zip.cpt
+echo $(date +"%y-%m-%d %H:%M") " Backup hochgeladen "
+echo $line
+echo $(date +"%y-%m-%d %H:%M") " Backup hochgeladen " >> $log
 
