@@ -1,11 +1,19 @@
 impro-backup - backup script
+<<<<<<< HEAD
 
+=======
+==
+>>>>>>> 48673586e32fb0c4d5234b95b83a7fbf534c1778
 copyright 2013 by Finn Malte Hinrichsen, fmh@fmhc.de
 
 Alle Reche vorbehalten bis ich mich fuer eine OpenSource-Lizenz entschieden habe.
 
 Was macht impro-Backup?
 ==
+<<<<<<< HEAD
+=======
+
+>>>>>>> 48673586e32fb0c4d5234b95b83a7fbf534c1778
 - Sichert Verzeichnisse rekursiv
 	- /var/www (Webserverdateien)
 	- /etc/apache2 (Webserverkonfiguration)
@@ -14,6 +22,7 @@ Was macht impro-Backup?
 - verschlüsselt das Archiv mit einem vorher angegebenen Key
 
 Installation
+==
 
 (unter Ubuntu, andere Systeme aehnlich)
 Falls git noch nicht installiert ist:
@@ -23,16 +32,27 @@ Anschliessend das Repository lokal klonen
  git clone https://github.com/fmhc/impro-backup.git
 
 Datei backup.cfg.example nach backup.cfg kopieren und Inhalte anpassen:
+
  # mySQL-Settings
- $MYSQLUSER="root"
- $MYSQLPASS="password"
- $MYSQLDB="database"
+
+$MYSQLUSER="root"
+
+$MYSQLPASS="password"
+
+$MYSQLDB="database"
+
  # Backup Directory without / @end
- $BACKUPDIR="/home/user" 
+
+$BACKUPDIR="/home/user" 
+
  # Log Dir without / @end
- $LOGDIR="/var/log"
+
+$LOGDIR="/var/log"
+
  # Verschluesselung
- $KEYFILE="/home/user/keyfile.key"
+
+$KEYFILE="/home/user/keyfile.key"
+
 
 Datei backup.key.example nach backup.key kopieren und Passwort rein schreiben.
 
