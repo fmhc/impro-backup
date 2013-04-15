@@ -1,9 +1,11 @@
 impro-backup - backup script
+
 copyright 2013 by Finn Malte Hinrichsen, fmh@fmhc.de
+
 Alle Reche vorbehalten bis ich mich fuer eine OpenSource-Lizenz entschieden habe.
 
 Was macht impro-Backup?
-
+==
 - Sichert Verzeichnisse rekursiv
 	- /var/www (Webserverdateien)
 	- /etc/apache2 (Webserverkonfiguration)
