@@ -3,12 +3,14 @@ $MYSQLUSER="root"
 $MYSQLPASS="password"
 $MYSQLDB="database"
 
-# Backup Directory without / @end
-$BACKUPDIR="/home/user" 
+# Backup Write to Directory without / @end
+$BACKUP_TO="/home/user" 
 
 # Log Dir without / @end
-$LOGDIR="/var/log"
+$LOG_TO="/var/log"
 
+# Backup locations file
+$BACKUP_DIR="/home/user/backup.dir"
 
 # Verschluesselung
 $KEYFILE="/home/user/keyfile.key"
