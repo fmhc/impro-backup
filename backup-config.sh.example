@@ -1,0 +1,23 @@
+#!/bin/bash
+# mySQL-Settings
+MYSQLUSER="root"
+MYSQLPASS="password"
+MYSQLDB="database"
+
+# Backup Write to Directory without / @end
+BACKUP_TO="/home/user" 
+
+# Log Dir without / @end
+LOG_TO="/var/log"
+
+# Backup locations file
+BACKUP_DIR="/home/user/backup.dir"
+
+# Verschluesselung
+KEYFILE="/home/user/keyfile.key"
+
+FTPU="" # ftp login name
+FTPP="" # ftp password
+FTPS="" # remote ftp server
+FTPF="/backup/" # remote ftp server directory for $FTPU & $FTPP
+
