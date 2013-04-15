@@ -8,7 +8,8 @@
 # 0.1 first version
 # 0.2 include and encryption
 # 0.3 better variables handling
-version="0.3"
+# 0.4 bugfixes, FTP Upload
+version="0.4"
 
 # ########################################
 # (!) Change path to config
@@ -49,7 +50,7 @@ filecontent=$(<$BACKUP_DIR)
 
 for t in "${filecontent[@]}"
 do
-echo $(date +"%y-%m-%d %H:%M") " Backup von "$t"/* " 
+echo $(date +"%y-%m-%d %H:%M") " Backup von "$t"/* /n" 
 echo $(date +"%y-%m-%d %H:%M") " Backup von "$t"/* " >> $log
 zip -grv $bdir/backup_$datum.zip $t/* >> $log 
 done
