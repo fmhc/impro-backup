@@ -1,0 +1,5 @@
+# restic --exclude-file: ein Muster pro Zeile (Glob), siehe https://restic.readthedocs.io/en/stable/040_backup.html#excluding-files
+*.log
+*/cache/*
+*/node_modules/*
+*/.git/objects/*

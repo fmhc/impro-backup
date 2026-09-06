@@ -1,0 +1,5 @@
+# Zugangsdaten für mysqldump — Mode 600. Wird via --defaults-extra-file gelesen, taucht nie in `ps` auf.
+[client]
+user=backup
+password=hier-das-passwort
+# host=127.0.0.1

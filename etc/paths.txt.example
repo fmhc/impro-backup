@@ -1,0 +1,5 @@
+# Ein Pfad pro Zeile. Zeilen mit # werden ignoriert.
+/var/www
+/etc/apache2
+/etc/nginx
+/etc/letsencrypt

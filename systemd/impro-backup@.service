@@ -1,0 +1,13 @@
+[Unit]
+Description=impro-backup %i
+Documentation=https://github.com/fmhc/impro-backup
+After=network-online.target mysql.service mariadb.service postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/impro-backup %i
+Nice=10
+IOSchedulingClass=idle
+# Ein Lauf darf nicht ewig hängen (z.B. totes Backend)
+TimeoutStartSec=6h
