@@ -4,15 +4,16 @@
 #
 #   impro-backup run              Backup (DB + Dateien) + Retention
 #   impro-backup check            Repo-Integrität prüfen (liest Stichprobe der Daten)
-#   impro-backup list             Snapshots anzeigen
-#   impro-backup restore [SNAP] [ZIEL]   Snapshot (Default: latest) nach ZIEL (Default: /var/tmp/impro-restore)
-#   impro-backup init             Repo anlegen (einmalig)
+#   impro-backup list             Snapshots dieses Hosts anzeigen
+#   impro-backup restore [SNAP] [ZIEL]   letzten vollständigen Lauf (Dateien + DB) oder Snapshot SNAP
+#                                 nach ZIEL holen (Default: neues Verzeichnis unter /var/tmp)
+#   impro-backup init             Repo anlegen, Timer aktivieren (einmalig)
 #   impro-backup restic ARGS...   beliebiger restic-Befehl mit der impro-Konfiguration
 #
 # Konfiguration: /etc/impro-backup/ (überschreibbar via IMPRO_CONFIG_DIR)
-#   env         RESTIC_REPOSITORY, RESTIC_PASSWORD_FILE, optional NTFY_URL, KEEP_*, DB_DUMP_CMD, Backend-Creds
-#   my.cnf      [client] user/password für mysqldump (optional; ohne my.cnf und DB_DUMP_CMD wird kein Dump gemacht)
-#   paths.txt   zu sichernde Pfade, einer pro Zeile, # = Kommentar
+#   env         RESTIC_REPOSITORY, RESTIC_PASSWORD_FILE, optional NTFY_URL, KEEP_*, DB_DUMP_CMD, IMPRO_HOST
+#   my.cnf      [client] user/password für mysqldump (optional; ohne my.cnf und DB_DUMP_CMD kein Dump)
+#   paths.txt   zu sichernde Pfade, einer pro Zeile, # = Kommentar; alle müssen existieren
 #   excludes.txt (optional) restic-Exclude-Muster, eines pro Zeile
 #
 # Copyright (c) 2013–2026 Finn Malte Hinrichsen, MIT-Lizenz (siehe README).
@@ -25,43 +26,87 @@ ENV_FILE="$CONF/env"
 MY_CNF="$CONF/my.cnf"
 PATHS_FILE="$CONF/paths.txt"
 EXCLUDES_FILE="$CONF/excludes.txt"
-HOST="$(hostname -s 2>/dev/null || hostname)"
 STEP="start"
+RUN_TAG=""
+PARTIAL=0
 
-log()  { printf '%s impro-backup: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
-die()  { log "FEHLER: $*" >&2; exit 1; }
+# Alles Diagnostische geht nach stderr, damit stdout für Daten (JSON, Passthrough) frei bleibt.
+log()  { printf '%s impro-backup: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2; }
+die()  { log "FEHLER: $*"; notify "impro-backup FAILED on ${HOST:-$(hostname)}" "Schritt $STEP: $*" high; exit 1; }
 
 usage() {
-  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
-# Benachrichtigung darf nie selbst den Lauf scheitern lassen.
+# Repo-URLs können Zugangsdaten enthalten (rest:https://user:pw@host) – nie ungefiltert loggen.
+redact_url() { sed -E 's#://[^/@]+@#://***@#' <<<"$1"; }
+
+# Benachrichtigung darf nie selbst den Lauf scheitern lassen. Token geht per curl-Config
+# über stdin, nicht als Argument (wäre sonst in `ps` sichtbar).
 notify() {
   local title="$1" body="$2" prio="${3:-default}"
   [[ -n "${NTFY_URL:-}" ]] || return 0
-  local -a hdr=(-H "Title: $title" -H "Priority: $prio")
-  [[ -n "${NTFY_TOKEN:-}" ]] && hdr+=(-H "Authorization: Bearer $NTFY_TOKEN")
-  curl -fsS -m 15 "${hdr[@]}" -d "$body" "$NTFY_URL" >/dev/null 2>&1 || log "Hinweis: Benachrichtigung an $NTFY_URL fehlgeschlagen"
+  {
+    printf 'header = "Title: %s"\nheader = "Priority: %s"\n' "$title" "$prio"
+    [[ -n "${NTFY_TOKEN:-}" ]] && printf 'header = "Authorization: Bearer %s"\n' "$NTFY_TOKEN"
+  } | curl -fsS -m 15 -K - -d "$body" "$NTFY_URL" >/dev/null 2>&1 || log "Hinweis: ntfy-Benachrichtigung fehlgeschlagen"
+}
+
+# Ein Lauf ist erst gültig, wenn DB-Dump und Dateien beide durch sind. Bricht einer ab,
+# werden die Snapshots dieses Laufs verworfen, damit "restore" nie Generationen mischt.
+cleanup_run() {
+  [[ -n "$RUN_TAG" && "$STEP" =~ ^(db-dump|files)$ ]] || return 0
+  local ids
+  # forget braucht explizite IDs; ein reiner --tag-Filter ohne Keep-Policy löscht nichts.
+  ids="$(restic snapshots --host "$HOST" --tag "impro,$RUN_TAG" --json 2>/dev/null \
+         | grep -oE '"short_id":"[0-9a-f]+"' | cut -d'"' -f4 | tr '\n' ' ')" || true
+  [[ -n "${ids// /}" ]] || return 0
+  log "verwerfe unvollständige Snapshots des Laufs $RUN_TAG: $ids"
+  # shellcheck disable=SC2086
+  restic forget --quiet $ids >/dev/null 2>&1 || log "Hinweis: Aufräumen fehlgeschlagen, Snapshots $ids manuell prüfen"
 }
 
 on_error() {
   local rc=$?
+  trap - ERR
   log "FEHLGESCHLAGEN in Schritt '$STEP' (Exit $rc)"
+  cleanup_run
   notify "impro-backup FAILED on $HOST" "Schritt: $STEP, Exit-Code $rc. Details: journalctl -u 'impro-backup@*'" high
   exit "$rc"
 }
+on_signal() {
+  trap - ERR TERM INT
+  log "abgebrochen durch Signal in Schritt '$STEP'"
+  cleanup_run
+  notify "impro-backup FAILED on $HOST" "Abgebrochen (Signal/Timeout) in Schritt $STEP" high
+  exit 143
+}
 trap on_error ERR
+trap on_signal TERM INT
 
-# Konfigdateien müssen existieren und dürfen nur dem Owner gehören/lesbar sein.
+# Konfigdateien werden als root gesourct: reguläre Datei, kein Symlink, gehört uns, nur Owner lesbar.
 require_private() {
-  local f="$1" mode
-  [[ -r "$f" ]] || die "Datei fehlt oder nicht lesbar: $f"
+  local f="$1" mode owner
+  [[ -e "$f" ]] || die "Datei fehlt: $f"
+  [[ -L "$f" ]] && die "$f darf kein Symlink sein"
+  [[ -f "$f" ]] || die "$f ist keine reguläre Datei"
+  owner="$(stat -c %u "$f")"
+  [[ "$owner" == "$EUID" ]] || die "$f gehört UID $owner, muss UID $EUID gehören"
   mode="$(stat -c %a "$f")"
-  [[ "$mode" =~ ^[0-7]00$ ]] || die "$f muss Mode 600 haben (ist $mode): chmod 600 '$f'"
+  [[ "$mode" =~ ^[0-7]00$ ]] || die "$f darf nur für den Owner lesbar sein (ist $mode): chmod 600 '$f'"
+}
+require_private_dir() {
+  local d="$1" mode owner
+  [[ -d "$d" && ! -L "$d" ]] || die "Konfigverzeichnis fehlt oder ist Symlink: $d"
+  owner="$(stat -c %u "$d")"
+  [[ "$owner" == "$EUID" ]] || die "$d gehört UID $owner, muss UID $EUID gehören"
+  mode="$(stat -c %a "$d")"
+  [[ "$mode" =~ ^[0-7][0-5][0-5]$ ]] || die "$d darf für Gruppe/Andere nicht schreibbar sein (ist $mode): chmod 700 '$d'"
 }
 
 load_config() {
+  require_private_dir "$CONF"
   require_private "$ENV_FILE"
   set -a
   # shellcheck disable=SC1090
@@ -70,50 +115,70 @@ load_config() {
   [[ -n "${RESTIC_REPOSITORY:-}" ]]   || die "RESTIC_REPOSITORY fehlt in $ENV_FILE"
   [[ -n "${RESTIC_PASSWORD_FILE:-}" ]] || die "RESTIC_PASSWORD_FILE fehlt in $ENV_FILE"
   require_private "$RESTIC_PASSWORD_FILE"
+  HOST="${IMPRO_HOST:-$(hostname -s 2>/dev/null || hostname)}"
   export RESTIC_CACHE_DIR="${RESTIC_CACHE_DIR:-/var/cache/impro-backup}"
   mkdir -p "$RESTIC_CACHE_DIR"
   command -v restic >/dev/null || die "restic nicht installiert (install.sh ausführen)"
 }
 
-# Liefert den Dump-Befehl oder nichts, wenn keine DB konfiguriert ist.
-db_dump_cmd() {
+# Ein Lauf zur Zeit: run, check und restore teilen sich ein Lock (auch bei manuellem Aufruf).
+take_lock() {
+  exec 9>"$RESTIC_CACHE_DIR/lock"
+  flock -w "${LOCK_WAIT:-3600}" 9 || die "ein anderer impro-backup-Lauf ist aktiv (Lock $RESTIC_CACHE_DIR/lock)"
+}
+
+# Setzt DB_CMD; leer, wenn keine Datenbank konfiguriert ist.
+resolve_db_cmd() {
+  DB_CMD=""
   if [[ -n "${DB_DUMP_CMD:-}" ]]; then
-    printf '%s' "$DB_DUMP_CMD"
+    DB_CMD="$DB_DUMP_CMD"
   elif [[ -e "$MY_CNF" ]]; then
     require_private "$MY_CNF"
     command -v mysqldump >/dev/null || die "mysqldump nicht gefunden, aber $MY_CNF existiert"
-    printf 'mysqldump --defaults-extra-file=%q --all-databases --single-transaction --quick --routines --events --triggers' "$MY_CNF"
+    printf -v DB_CMD 'mysqldump --defaults-extra-file=%q --all-databases --single-transaction --quick --routines --events --triggers' "$MY_CNF"
   fi
 }
 
 backup_db() {
-  local cmd
-  cmd="$(db_dump_cmd)"
-  if [[ -z "$cmd" ]]; then
+  resolve_db_cmd
+  if [[ -z "$DB_CMD" ]]; then
     log "kein Datenbank-Dump konfiguriert (weder $MY_CNF noch DB_DUMP_CMD), überspringe"
     return 0
   fi
   STEP="db-dump"
   log "Datenbank-Dump -> restic (streamt, berührt nie die Platte)"
-  # Das Dump-Kommando läuft in einer eigenen Shell, damit pipefail seinen Exit-Code sieht.
-  bash -o pipefail -c "$cmd" | restic backup --stdin --stdin-filename "${DB_DUMP_NAME:-db-all.sql}" --tag db
+  # Dump läuft in eigener strenger Shell; scheitert er, greift pipefail und cleanup_run verwirft den Snapshot.
+  bash -Eeuo pipefail -c "$DB_CMD" \
+    | restic backup --stdin --stdin-filename "${DB_DUMP_NAME:-db-all.sql}" --host "$HOST" --tag "impro,db,$RUN_TAG"
+}
+
+read_paths() {
+  PATHS=()
+  local line
+  [[ -r "$PATHS_FILE" ]] || die "Pfadliste fehlt: $PATHS_FILE"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" =~ ^[[:space:]]*(#|$) ]] && continue
+    [[ -e "$line" ]] || die "Pfad aus $PATHS_FILE existiert nicht: $line (Zeile löschen oder Mount prüfen)"
+    PATHS+=("$line")
+  done < "$PATHS_FILE"
+  ((${#PATHS[@]})) || die "$PATHS_FILE enthält keine Pfade"
 }
 
 backup_files() {
   STEP="files"
-  [[ -r "$PATHS_FILE" ]] || die "Pfadliste fehlt: $PATHS_FILE"
-  local -a paths=() opts=()
-  mapfile -t paths < <(grep -vE '^[[:space:]]*(#|$)' "$PATHS_FILE")
-  ((${#paths[@]})) || die "$PATHS_FILE enthält keine Pfade"
+  read_paths
+  local -a opts=(--exclude-caches)
   [[ -r "$EXCLUDES_FILE" ]] && opts+=(--exclude-file "$EXCLUDES_FILE")
-  opts+=(--exclude-caches --one-file-system)
-  log "Dateien -> restic: ${paths[*]}"
+  log "Dateien -> restic: ${PATHS[*]}"
   local rc=0
-  restic backup "${opts[@]}" --tag files "${paths[@]}" || rc=$?
+  restic backup "${opts[@]}" --host "$HOST" --tag "impro,files,$RUN_TAG" "${PATHS[@]}" || rc=$?
   case "$rc" in
     0) ;;
-    3) log "WARNUNG: einige Dateien konnten nicht gelesen werden (restic Exit 3), Snapshot ist unvollständig"
-       notify "impro-backup WARN on $HOST" "Datei-Backup unvollständig (restic Exit 3). Siehe Journal." ;;
+    3) PARTIAL=1
+       log "WARNUNG: einige Dateien konnten nicht gelesen werden (restic Exit 3), Snapshot ist unvollständig"
+       # Unvollständige Läufe umtaggen: restore latest übergeht sie, Retention zählt sie nicht mit.
+       restic tag --quiet --set "impro,files-partial,$RUN_TAG" --host "$HOST" --tag "impro,files,$RUN_TAG" >/dev/null
+       restic tag --quiet --set "impro,db-partial,$RUN_TAG"    --host "$HOST" --tag "impro,db,$RUN_TAG"    >/dev/null 2>&1 || true ;;
     *) return "$rc" ;;
   esac
 }
@@ -121,41 +186,66 @@ backup_files() {
 retention() {
   STEP="retention"
   log "Retention: daily ${KEEP_DAILY:-7} / weekly ${KEEP_WEEKLY:-4} / monthly ${KEEP_MONTHLY:-6}, prune"
-  restic forget --quiet --host "$HOST" \
-    --keep-daily "${KEEP_DAILY:-7}" --keep-weekly "${KEEP_WEEKLY:-4}" --keep-monthly "${KEEP_MONTHLY:-6}" \
-    --prune
+  restic forget --quiet --host "$HOST" --tag impro,files --tag impro,db \
+    --keep-daily "${KEEP_DAILY:-7}" --keep-weekly "${KEEP_WEEKLY:-4}" --keep-monthly "${KEEP_MONTHLY:-6}"
+  # Unvollständige Läufe (Exit 3) nur begrenzt aufheben, sie sind kein vollwertiger Wiederherstellungspunkt.
+  restic forget --quiet --host "$HOST" --tag impro,files-partial --tag impro,db-partial \
+    --keep-within "${KEEP_PARTIAL:-14d}"
+  restic prune --quiet
 }
 
 cmd_run() {
+  take_lock
   local t0=$SECONDS
-  log "Start (Repo: $RESTIC_REPOSITORY)"
+  RUN_TAG="run-$(date +%Y%m%d-%H%M%S)"
+  log "Start $RUN_TAG (Host $HOST, Repo $(redact_url "$RESTIC_REPOSITORY"))"
   backup_db
   backup_files
+  if ((PARTIAL)); then
+    STEP="done-partial"
+    log "Lauf unvollständig, Retention übersprungen (Exit 3)"
+    notify "impro-backup WARN on $HOST" "Datei-Backup $RUN_TAG unvollständig (nicht lesbare Dateien). Retention übersprungen. Siehe Journal." high
+    exit 3
+  fi
   retention
   STEP="done"
   local dur=$((SECONDS - t0))
   log "fertig in ${dur}s"
-  notify "impro-backup OK on $HOST" "Backup fertig in ${dur}s. $(restic snapshots --host "$HOST" --compact 2>/dev/null | tail -1)" low
+  notify "impro-backup OK on $HOST" "Lauf $RUN_TAG fertig in ${dur}s. $(restic snapshots --host "$HOST" --tag impro --compact 2>/dev/null | tail -1)" low
 }
 
 cmd_check() {
+  take_lock
   STEP="check"
   log "Integritätsprüfung (Stichprobe ${CHECK_SUBSET:-5%} der Daten)"
   restic check --read-data-subset="${CHECK_SUBSET:-5%}"
   log "check ok"
 }
 
+# JSON-Snapshotliste; Fehler der Abfrage brechen ab (kein "kein Snapshot" bei totem Backend).
+snapshots_json() { restic snapshots --host "$HOST" --json "$@"; }
+json_is_empty()  { [[ -z "$1" || "$1" == "[]" || "$1" == "null" ]]; }
+
 cmd_restore() {
+  take_lock
   STEP="restore"
-  local snap="${1:-latest}" target="${2:-/var/tmp/impro-restore}"
+  local snap="${1:-latest}" target="${2:-/var/tmp/impro-restore-$(date +%Y%m%d-%H%M%S)}" json run
+  [[ -e "$target" ]] && die "Restore-Ziel existiert bereits: $target (neues Verzeichnis angeben)"
   mkdir -p "$target"
+  chmod 700 "$target"
   if [[ "$snap" == latest ]]; then
-    # Dateien und DB-Dump sind getrennte Snapshots: "latest" muss beide holen.
-    log "Restore: neuester Datei-Snapshot nach $target"
-    restic restore latest --tag files --target "$target"
-    if restic snapshots --tag db --latest 1 --json 2>/dev/null | grep -q '"id"'; then
-      log "Restore: neuester DB-Dump nach $target"
-      restic restore latest --tag db --target "$target"
+    json="$(snapshots_json --tag impro,files --latest 1)"
+    json_is_empty "$json" && die "kein Datei-Snapshot für Host $HOST im Repo (IMPRO_HOST in env setzen?)"
+    run="$(grep -o 'run-[0-9]\{8\}-[0-9]\{6\}' <<<"$json" | head -1)"
+    [[ -n "$run" ]] || die "Datei-Snapshot ohne Lauf-Tag, bitte Snapshot-ID explizit angeben"
+    log "Restore Lauf $run (Host $HOST): Dateien nach $target"
+    restic restore latest --host "$HOST" --tag "impro,files,$run" --target "$target"
+    json="$(snapshots_json --tag "impro,db,$run" --latest 1)"
+    if json_is_empty "$json"; then
+      log "kein DB-Dump in Lauf $run"
+    else
+      log "Restore Lauf $run: DB-Dump nach $target"
+      restic restore latest --host "$HOST" --tag "impro,db,$run" --target "$target"
     fi
   else
     log "Restore Snapshot $snap nach $target"
@@ -167,10 +257,14 @@ cmd_restore() {
 cmd_init() {
   STEP="init"
   if restic cat config >/dev/null 2>&1; then
-    log "Repo existiert bereits: $RESTIC_REPOSITORY"
+    log "Repo existiert bereits: $(redact_url "$RESTIC_REPOSITORY")"
   else
-    log "lege Repo an: $RESTIC_REPOSITORY"
+    log "lege Repo an: $(redact_url "$RESTIC_REPOSITORY")"
     restic init
+  fi
+  if command -v systemctl >/dev/null 2>&1 && [[ -f /etc/systemd/system/impro-backup@.service ]]; then
+    systemctl enable --now impro-backup@run.timer impro-backup@check.timer >/dev/null
+    log "Timer aktiviert: impro-backup@run.timer (täglich), impro-backup@check.timer (wöchentlich)"
   fi
 }
 
@@ -184,11 +278,11 @@ main() {
   case "$cmd" in
     run)     cmd_run ;;
     check)   cmd_check ;;
-    list)    restic snapshots ;;
+    list)    restic snapshots --host "$HOST" --tag impro ;;
     restore) cmd_restore "$@" ;;
     init)    cmd_init ;;
     restic)  exec restic "$@" ;;
-    *)       log "unbekannter Befehl: $cmd" >&2; usage 2 ;;
+    *)       log "unbekannter Befehl: $cmd"; usage 2 ;;
   esac
 }
 
